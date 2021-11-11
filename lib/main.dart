@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_tut/services/auth.dart';
 import 'package:firebase_tut/services/db.dart';
 import 'package:firebase_tut/services/models.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +25,7 @@ class MyApp extends StatelessWidget {
 
         // Once complete, show your application
         if (snapshot.connectionState == ConnectionState.done) {
-          return MaterialApp(home: FirstScreen());
+          return MaterialApp(home: MyHomePage());
         }
 
         // Otherwise, show something whilst waiting for initialization to complete
@@ -33,24 +35,100 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class FirstScreen extends StatefulWidget {
-  FirstScreen({Key key}) : super(key: key);
+class SignUpScreen extends StatefulWidget {
+  SignUpScreen({Key key}) : super(key: key);
 
   @override
-  _FirstScreenState createState() => _FirstScreenState();
+  _SignUpScreenState createState() => _SignUpScreenState();
 }
 
-class _FirstScreenState extends State<FirstScreen> {
+class _SignUpScreenState extends State<SignUpScreen> {
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  final _formKey = GlobalKey<FormState>();
+  final controller = TextEditingController();
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => MyHomePage(),),);
-        },
-        tooltip: 'Increment',
-        child: Icon(Icons.add),
-      ), 
+      backgroundColor: Colors.grey[900],
+      body: Container(
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              style: ButtonStyle(
+                backgroundColor: MaterialStateProperty.all(Colors.red[300]),
+                foregroundColor: MaterialStateProperty.all(Colors.white),
+              ),
+              child: Text('Sign in with google'),
+              onPressed: () async {
+                await AuthService().signInWithGoogle();
+                User user = AuthService().auth.currentUser;
+                await DatabaseService().writeStudent(
+                  Student(
+                    name: user.displayName,
+                    marks: 100,
+                    rollNo: user.email,
+                    uid: user.uid,
+                    course: user.phoneNumber,
+                  ),
+                );
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MyHomePage(),
+                  ),
+                );
+              },
+            ),
+            Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: controller,
+                    // The validator receives the text that the user has entered.
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter some text';
+                      }
+                      return null;
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        if (_formKey.currentState.validate()) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Processing Data')),
+                          );
+                          await AuthService()
+                              .signInWithPhone(controller.text, context);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Correct fields first'),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Submit'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
     );
   }
 }
@@ -65,9 +143,37 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   @override
+  void initState() {
+    super.initState();
+    checkSignedIn();
+  }
+
+  checkSignedIn() async {
+    AuthService().auth.authStateChanges().listen((User user) {
+      if (user == null) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => SignUpScreen()),
+          (route) => false,
+        );
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(
+        title: Text(AuthService().auth.currentUser.displayName ?? 'Name'),
+        leading: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+          ),
+          child: Image.network(
+            AuthService().auth.currentUser.photoURL ?? '',
+          ),
+        ),
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: DatabaseService().readAllStudents(),
         builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
@@ -79,8 +185,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   padding: const EdgeInsets.all(8.0),
                   child: ListTile(
                     tileColor: Colors.grey[300],
-                    title: Text(snapshot.data.docs[index]['Name']),
-                    subtitle: Text(snapshot.data.docs[index]['Marks'].toString()),
+                    title: Text(snapshot.data.docs[index]['Name'] ?? 'Name'),
+                    subtitle:
+                        Text(snapshot.data.docs[index]['Marks'].toString()),
                   ),
                 );
               },
@@ -94,20 +201,15 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          // Student student = Student(
-          //   name: 'Yuvraj',
-          //   rollNo: '2020270',
-          //   marks: 100,
-          //   course: 'CSE',
-          // );
-          await DatabaseService().updateStudent('YAIcHzhPHLMCRebHhek7');
-          // List list = await DatabaseService().readCSEStudent();
-          // for (var item in list) {
-          //   print(item.name);
-          // }
+          await AuthService().auth.signOut();
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => SignUpScreen()),
+            (route) => false,
+          );
         },
         tooltip: 'Increment',
-        child: Icon(Icons.add),
+        child: Icon(Icons.verified_user),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }

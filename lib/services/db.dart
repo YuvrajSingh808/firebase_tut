@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'models.dart';
@@ -7,10 +5,10 @@ import 'models.dart';
 class DatabaseService {
   FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-  Future<String> writeStudent(Student student) async {
+  Future writeStudent(Student student) async {
     CollectionReference ref = firestore.collection('students');
-    DocumentReference docRef = await ref.add(student.toMap());
-    return docRef.id;
+    await ref.doc(student.uid).set(student.toMap());
+    // return docRef.id;
   }
 
   Future<List<Student>> readAllStudentOnce() async {
